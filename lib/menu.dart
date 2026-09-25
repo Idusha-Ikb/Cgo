@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:driver_app/settingspage.dart';
 
 class Menu extends StatelessWidget {
   final Function(int) onSelectTab;
@@ -39,12 +40,13 @@ class Menu extends StatelessWidget {
             },
           ),
           ListTile(
-            leading: const Icon(Icons.settings_outlined),
+            leading: const Icon(Icons.settings),
             title: const Text('Settings'),
             onTap: () {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Settings clicked')),
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsPage()),
               );
             },
           ),

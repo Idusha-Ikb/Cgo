@@ -69,8 +69,8 @@ class RouteScreen extends StatelessWidget {
                   const Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('128 km', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                      Text('Estimated 4h 15m', style: TextStyle(color: Colors.grey)),
+                      Text('12km', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text('Estimated 1h 15m', style: TextStyle(color: Colors.grey)),
                     ],
                   ),
                   const Spacer(),
