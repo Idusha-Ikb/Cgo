@@ -1,0 +1,28 @@
+# Flutter and Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+build/
+coverage/
+.widget_preview/
+
+# IDE and operating system files
+.idea/
+*.iml
+.DS_Store
+
+# Python backend
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+backend/*.db
+backend/*.sqlite3
+
+# Generated platform build files
+android/.gradle/
+ios/Flutter/ephemeral/
+windows/flutter/ephemeral/
