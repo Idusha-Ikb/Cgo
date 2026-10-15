@@ -1,23 +1,34 @@
- import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:driver_app/main.dart';
+import 'package:driver_app/services/shipment_service.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    
-    await tester.pumpWidget(const MyApp());
+  test('Sri Lanka Customs dataset contains valid SRS shipments across all categories', () {
+    final shipments = ShipmentService.defaultCustomsShipments;
+    expect(shipments.isNotEmpty, true);
+    expect(shipments.length, 12);
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    final activeShipments = shipments.where((s) => s.status == 'Active').toList();
+    final pendingShipments = shipments.where((s) => s.status == 'Pending').toList();
+    final completedShipments = shipments.where((s) => s.status == 'Completed').toList();
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    expect(activeShipments.length, 4);
+    expect(pendingShipments.length, 4);
+    expect(completedShipments.length, 4);
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    final first = shipments.first;
+    expect(first.shipmentId, 'SHP-2026-001');
+    expect(first.containerId, 'CONT-001');
+    expect(first.status, 'Active');
+    expect(first.vehicleNo, 'WP-DA-4821');
+    expect(first.sealNumber, 'SL-CUS-884912');
+  });
+
+  test('ShipmentModel correctly converts to container details map', () {
+    final shipment = ShipmentService.defaultCustomsShipments.first;
+    final map = shipment.toContainerDetailsMap();
+
+    expect(map['containerId'], 'CONT-001');
+    expect(map['sealNumber'], 'SL-CUS-884912');
+    expect(map['status'], 'In Transit');
   });
 }

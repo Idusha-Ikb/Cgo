@@ -1,18 +1,53 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:easy_localization/easy_localization.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'firebase_options.dart';
 
-import 'menu.dart';
-import 'screens/home_screen.dart';
-import 'screens/route_screen.dart';
-import 'screens/alerts_screen.dart';
-import 'screens/profile_screen.dart';
+import 'package:driver_app/menu.dart';
+import 'package:driver_app/driver_register_page.dart';
+import 'package:driver_app/settings_screen.dart';
+import 'package:driver_app/driver_login_page.dart';
+import 'package:driver_app/screens/home_screen.dart';
+import 'package:driver_app/screens/route_screen.dart';
+import 'package:driver_app/screens/alerts_screen.dart';
+import 'package:driver_app/screens/profile_screen.dart';
+import 'package:driver_app/screens/shipments_screen.dart';
+import 'package:driver_app/services/shipment_service.dart';
 
-// Global Theme Switcher State
-ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.system);
+// Top-level Background Notification Handler
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  debugPrint("Background FCM Message Received: ${message.messageId}");
+}
+
+// Theme Mode Notifier: ALWAYS defaults to light theme unless explicitly enabled in settings
+final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await EasyLocalization.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // Load saved dark mode preference from SharedPreferences (Default is false / Light Mode)
+  final prefs = await SharedPreferences.getInstance();
+  final bool isDarkMode = prefs.getBool('isDarkMode') ?? false;
+  themeNotifier.value = isDarkMode ? ThemeMode.dark : ThemeMode.light;
+
+  // Pre-seed Sri Lanka Customs dataset in Firestore if empty
+  ShipmentService.seedInitialShipmentsIfEmpty();
+
+  // Register Background Notification Handler
+  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+  // Request Notification Permission
+  await FirebaseMessaging.instance.requestPermission();
 
   runApp(
     EasyLocalization(
@@ -35,54 +70,93 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
-      builder: (_, ThemeMode currentMode, __) {
+      builder: (context, currentMode, child) {
         return MaterialApp(
-          debugShowCheckedModeBanner: false,
           title: 'Driver App',
+          debugShowCheckedModeBanner: false,
+          themeMode: currentMode,
 
-          // Easy Localization Setup
+          // EasyLocalization Configuration
           localizationsDelegates: context.localizationDelegates,
           supportedLocales: context.supportedLocales,
           locale: context.locale,
+          
+          // Routes setup for seamless navigation
+          routes: {
+            '/login': (context) => const DriverLoginPage(),
+            '/register': (context) => const DriverRegisterPage(),
+            '/settings': (context) => const SettingsScreen(),
+            '/home': (context) => const MainNavigationScreen(),
+            '/home_screen': (context) => const MainNavigationScreen(),
+            '/shipments': (context) => const ShipmentsScreen(),
+          },
 
-          // 1. Light Theme Setup
+          // Light Theme (Default)
           theme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.light,
-            scaffoldBackgroundColor: Colors.white,
+            scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+            primaryColor: const Color(0xFF1E3A8A),
             colorScheme: ColorScheme.fromSeed(
               seedColor: const Color(0xFF1E3A8A),
               brightness: Brightness.light,
+              primary: const Color(0xFF1E3A8A),
               surface: Colors.white,
             ),
-            cardColor: Colors.white,
             appBarTheme: const AppBarTheme(
-              backgroundColor: Color(0xFF1E3A8A),
-              foregroundColor: Colors.white,
+              backgroundColor: Color(0xFFF8FAFC),
+              foregroundColor: Color.fromARGB(255, 23, 53, 134),
               elevation: 0,
             ),
+            cardTheme: CardThemeData(
+              color: Colors.white,
+              surfaceTintColor: Colors.transparent,
+              elevation: 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
           ),
-
-          // 2. Dark Theme Setup
+          
+          // Dark Theme (Only active when toggled in Settings)
           darkTheme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.dark,
-            scaffoldBackgroundColor: const Color(0xFF121212),
+            scaffoldBackgroundColor: const Color(0xFF0F172A),
+            primaryColor: const Color(0xFF2563EB),
             colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFF1E3A8A),
+              seedColor: const Color(0xFF2563EB),
               brightness: Brightness.dark,
-              surface: const Color(0xFF1E1E1E),
+              surface: const Color(0xFF1E293B),
             ),
-            cardColor: const Color(0xFF1E1E1E),
             appBarTheme: const AppBarTheme(
-              backgroundColor: Color(0xFF1F1F1F),
+              backgroundColor: Color(0xFF0F172A),
               foregroundColor: Colors.white,
               elevation: 0,
             ),
+            cardTheme: CardThemeData(
+              color: const Color(0xFF1E293B),
+              surfaceTintColor: const Color.fromARGB(0, 14, 31, 108),
+              elevation: 1,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            ),
           ),
 
-          themeMode: currentMode,
-          home: const MainNavigationScreen(),
+          // Login State Management
+          home: StreamBuilder<User?>(
+            stream: FirebaseAuth.instance.authStateChanges(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Scaffold(
+                  body: Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                );
+              }
+              if (snapshot.hasData && snapshot.data != null) {
+                return const MainNavigationScreen();
+              }
+              return const DriverLoginPage();
+            },
+          ),
         );
       },
     );
@@ -97,71 +171,174 @@ class MainNavigationScreen extends StatefulWidget {
 }
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
-  int _currentIndex = 0;
+  int _selectedIndex = 0;
+  int _unreadAlertsCount = 0;
 
-  List<String> get _titles => [
-        'Driver Dashboard'.tr(),
-        'Route'.tr(),
-        'Alerts'.tr(),
-        'Profile'.tr(),
-      ];
+  @override
+  void initState() {
+    super.initState();
+    _setupFcmTokenAndListeners();
+  }
 
-  void _onTabSelected(int index) {
+  Future<void> _setupFcmTokenAndListeners() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    // Firestore Listener for Unread Alerts
+    try {
+      FirebaseFirestore.instance
+          .collection('alerts')
+          .where('driverId', isEqualTo: user.uid)
+          .where('isRead', isEqualTo: false)
+          .snapshots()
+          .listen((snapshot) {
+        if (mounted) {
+          setState(() {
+            _unreadAlertsCount = snapshot.docs.length;
+          });
+        }
+      }, onError: (error) {
+        debugPrint("Firestore Query Error: $error");
+      });
+    } catch (e) {
+      debugPrint("Firestore Listener Setup Error: $e");
+    }
+
+    // Setup FCM Token and Listeners
+    _setupFcmToken(user.uid);
+  }
+
+  // Setup FCM Token and Listeners
+  Future<void> _setupFcmToken(String uid) async {
+    try {
+      String? token = await FirebaseMessaging.instance.getToken();
+      if (token != null) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .set({
+          'fcmToken': token,
+          'lastTokenUpdate': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+
+      // Token Refresh Listener
+      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .set({'fcmToken': newToken}, SetOptions(merge: true));
+      });
+
+      // Foreground Notification Listener
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        debugPrint("Foreground notification received: ${message.notification?.title}");
+      });
+    } catch (e) {
+      debugPrint("FCM Token Error: $e");
+    }
+  }
+
+  void _onItemTapped(int index) {
     setState(() {
-      _currentIndex = index;
+      _selectedIndex = index;
+      // Reset unread count when clicking on Alerts tab
+      if (index == 2) {
+        _unreadAlertsCount = 0;
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    // Dynamic titles for each tab
+    final List<String> titles = [
+      'home'.tr(),
+      'route'.tr(),
+      'alerts'.tr(),
+      'profile'.tr(),
+    ];
+
+    // Navigation Screens
     final List<Widget> screens = [
-      HomeScreen(onNavigate: _onTabSelected),
+      HomeScreen(
+        onNavigate: _onItemTapped,
+      ),
       const RouteScreen(),
       const AlertsScreen(),
       const ProfileScreen(),
     ];
 
     return Scaffold(
+      // Side Drawer
+      drawer: Menu(
+        onSelectTab: (index) {
+          _onItemTapped(index);
+        },
+      ),
+
       appBar: AppBar(
-        title: Text(
-          _titles[_currentIndex],
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
-        ),
         centerTitle: true,
+        
+        // Tab Name
+        title: Text(
+          titles[_selectedIndex],
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        
+        // Menu Bar Icon
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () {
+              Scaffold.of(context).openDrawer();
+            },
+          ),
+        ),
+
+        // Top Notification Icon
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () => _onTabSelected(2),
+            icon: Badge(
+              isLabelVisible: _unreadAlertsCount > 0,
+              label: Text('$_unreadAlertsCount'),
+              child: const Icon(Icons.notifications_none),
+            ),
+            onPressed: () {
+              _onItemTapped(2);
+            },
           ),
         ],
       ),
-      drawer: Menu(onSelectTab: _onTabSelected),
-      body: IndexedStack(
-        index: _currentIndex,
-        children: screens,
-      ),
+
+      body: screens[_selectedIndex],
+
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: _onTabSelected,
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: Theme.of(context).colorScheme.primary,
-        unselectedItemColor: Colors.grey,
+        selectedItemColor: const Color.fromARGB(255, 23, 53, 134),
+        unselectedItemColor: const Color.fromARGB(255, 92, 125, 210),
         items: [
           BottomNavigationBarItem(
             icon: const Icon(Icons.home),
-            label: 'Home'.tr(),
+            label: 'home'.tr(),
           ),
           BottomNavigationBarItem(
             icon: const Icon(Icons.map),
-            label: 'Map'.tr(),
+            label: 'route'.tr(),
           ),
           BottomNavigationBarItem(
-            icon: const Icon(Icons.notifications),
-            label: 'Alerts'.tr(),
+            icon: Badge(
+              isLabelVisible: _unreadAlertsCount > 0,
+              label: Text('$_unreadAlertsCount'),
+              child: const Icon(Icons.notifications),
+            ),
+            label: 'alerts'.tr(),
           ),
           BottomNavigationBarItem(
             icon: const Icon(Icons.person),
-            label: 'Profile'.tr(),
+            label: 'profile'.tr(),
           ),
         ],
       ),

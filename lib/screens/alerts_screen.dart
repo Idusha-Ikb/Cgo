@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:easy_localization/easy_localization.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/firebase_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 enum PriorityLevel {
   normal,
@@ -8,16 +12,16 @@ enum PriorityLevel {
 }
 
 extension PriorityExtension on PriorityLevel {
-  String get label {
+  String get localizedLabel {
     switch (this) {
       case PriorityLevel.normal:
-        return 'Normal';
+        return 'normal'.tr();
       case PriorityLevel.important:
-        return 'Important';
+        return 'important'.tr();
       case PriorityLevel.high:
-        return 'High';
+        return 'high'.tr();
       case PriorityLevel.critical:
-        return 'Critical';
+        return 'critical'.tr();
     }
   }
 
@@ -31,6 +35,20 @@ extension PriorityExtension on PriorityLevel {
         return Colors.red;
       case PriorityLevel.critical:
         return Colors.purple.shade800;
+    }
+  }
+
+  static PriorityLevel priorityFromString(String? priority) {
+    switch (priority?.toLowerCase()) {
+      case 'important':
+        return PriorityLevel.important;
+      case 'high':
+        return PriorityLevel.high;
+      case 'critical':
+        return PriorityLevel.critical;
+      case 'normal':
+      default:
+        return PriorityLevel.normal;
     }
   }
 }
@@ -49,114 +67,179 @@ class AlertItem {
     required this.icon,
     required this.priority,
   });
+
+  factory AlertItem.fromFirestore(DocumentSnapshot doc) {
+    Map<String, dynamic> data = (doc.data() as Map<String, dynamic>?) ?? {};
+
+    PriorityLevel priorityEnum = PriorityExtension.priorityFromString(
+      data['priority'] ?? 'normal',
+    );
+
+    IconData alertIcon;
+    switch (data['type']) {
+      case 'route':
+        alertIcon = Icons.map_rounded;
+        break;
+      case 'deviation':
+        alertIcon = Icons.alt_route_rounded;
+        break;
+      case 'geofence':
+        alertIcon = Icons.wrong_location_rounded;
+        break;
+      case 'shipment':
+        alertIcon = Icons.inventory_2_rounded;
+        break;
+      case 'chat':
+        alertIcon = Icons.mark_chat_unread_rounded;
+        break;
+      case 'instruction':
+        alertIcon = Icons.campaign_rounded;
+        break;
+      case 'issue_response':
+        alertIcon = Icons.build_circle_rounded;
+        break;
+      case 'issue_resolved':
+        alertIcon = Icons.check_circle_rounded;
+        break;
+      case 'tamper':
+      case 'security':
+        alertIcon = Icons.gpp_maybe_rounded;
+        break;
+      case 'emergency':
+        alertIcon = Icons.notification_important_rounded;
+        break;
+      case 'schedule':
+        alertIcon = Icons.update_rounded;
+        break;
+      case 'completed':
+        alertIcon = Icons.task_alt_rounded;
+        break;
+      case 'trip':
+      default:
+        alertIcon = Icons.local_shipping_rounded;
+        break;
+    }
+
+    String formattedTime = 'Just now';
+    if (data['timestamp'] != null) {
+      Timestamp timestamp = data['timestamp'] as Timestamp;
+      DateTime dateTime = timestamp.toDate();
+      Duration diff = DateTime.now().difference(dateTime);
+
+      if (diff.inMinutes < 1) {
+        formattedTime = 'Just now';
+      } else if (diff.inMinutes < 60) {
+        formattedTime = '${diff.inMinutes} mins ago';
+      } else if (diff.inHours < 24) {
+        formattedTime = '${diff.inHours} hrs ago';
+      } else if (diff.inDays == 1) {
+        formattedTime = 'Yesterday';
+      } else {
+        formattedTime = '${diff.inDays} days ago';
+      }
+    }
+
+    return AlertItem(
+      title: data['title'] ?? '',
+      description: data['description'] ?? '',
+      time: formattedTime,
+      icon: alertIcon,
+      priority: priorityEnum,
+    );
+  }
+
+  factory AlertItem.fromMap(Map<String, dynamic> data) {
+    PriorityLevel priorityEnum = PriorityExtension.priorityFromString(
+      data['priority'] ?? 'normal',
+    );
+
+    IconData alertIcon = Icons.notifications;
+    switch (data['type']) {
+      case 'tamper':
+        alertIcon = Icons.gpp_maybe_rounded;
+        break;
+      case 'deviation':
+        alertIcon = Icons.alt_route_rounded;
+        break;
+      case 'instruction':
+        alertIcon = Icons.campaign_rounded;
+        break;
+      case 'shipment':
+        alertIcon = Icons.inventory_2_rounded;
+        break;
+      case 'completed':
+        alertIcon = Icons.task_alt_rounded;
+        break;
+      default:
+        alertIcon = Icons.local_shipping_rounded;
+    }
+
+    return AlertItem(
+      title: data['title'] ?? '',
+      description: data['description'] ?? '',
+      time: 'Today',
+      icon: alertIcon,
+      priority: priorityEnum,
+    );
+  }
 }
 
 class AlertsScreen extends StatelessWidget {
   const AlertsScreen({super.key});
 
-  static final List<AlertItem> alerts = [
-    const AlertItem(
-      title: 'New Trip Assigned',
-      description: 'New shipment assigned to you.',
-      time: 'Just now',
-      icon: Icons.local_shipping_rounded,
-      priority: PriorityLevel.normal,
-    ),
-    const AlertItem(
-      title: 'Route Assigned/Updated',
-      description: 'Your route has been updated.',
-      time: '10 mins ago',
-      icon: Icons.map_rounded,
-      priority: PriorityLevel.important,
-    ),
-    const AlertItem(
-      title: 'Route Deviation',
-      description: 'You have moved outside the assigned route.',
-      time: '15 mins ago',
-      icon: Icons.alt_route_rounded,
-      priority: PriorityLevel.high,
-    ),
-    const AlertItem(
-      title: 'Geofence Alert',
-      description: 'You are approaching a restricted area.',
-      time: '25 mins ago',
-      icon: Icons.wrong_location_rounded,
-      priority: PriorityLevel.important,
-    ),
-    const AlertItem(
-      title: 'Shipment Update',
-      description: 'Shipment status has been updated.',
-      time: '1 hr ago',
-      icon: Icons.inventory_2_rounded,
-      priority: PriorityLevel.normal,
-    ),
-    const AlertItem(
-      title: 'Customs Message',
-      description: 'Customs Officer sent you a message.',
-      time: '1 hr ago',
-      icon: Icons.mark_chat_unread_rounded,
-      priority: PriorityLevel.important,
-    ),
-    const AlertItem(
-      title: 'Customs Instruction',
-      description: 'Please stop at the designated checkpoint.',
-      time: '2 hrs ago',
-      icon: Icons.campaign_rounded,
-      priority: PriorityLevel.high,
-    ),
-    const AlertItem(
-      title: 'Issue Response',
-      description: 'Your reported vehicle issue has been received.',
-      time: '3 hrs ago',
-      icon: Icons.build_circle_rounded,
-      priority: PriorityLevel.normal,
-    ),
-    const AlertItem(
-      title: 'Issue Resolved',
-      description: 'Your reported issue has been resolved.',
-      time: '4 hrs ago',
-      icon: Icons.check_circle_rounded,
-      priority: PriorityLevel.normal,
-    ),
-    const AlertItem(
-      title: 'Security Alert',
-      description: 'Security issue detected for your shipment.',
-      time: '5 hrs ago',
-      icon: Icons.gpp_maybe_rounded,
-      priority: PriorityLevel.critical,
-    ),
-    const AlertItem(
-      title: 'Emergency Response',
-      description: 'Customs has received your emergency alert.',
-      time: 'Yesterday',
-      icon: Icons.notification_important_rounded,
-      priority: PriorityLevel.critical,
-    ),
-    const AlertItem(
-      title: 'Schedule Update',
-      description: 'Expected arrival time has been updated.',
-      time: 'Yesterday',
-      icon: Icons.update_rounded,
-      priority: PriorityLevel.normal,
-    ),
-    const AlertItem(
-      title: 'Trip Completed',
-      description: 'Shipment delivery completed successfully.',
-      time: '2 days ago',
-      icon: Icons.task_alt_rounded,
-      priority: PriorityLevel.normal,
-    ),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    final driverId = currentUser?.uid ?? '';
+
     return Scaffold(
-      body: ListView.builder(
-        padding: const EdgeInsets.all(12.0),
-        itemCount: alerts.length,
-        itemBuilder: (context, index) {
-          final alert = alerts[index];
-          return _buildAlertCard(alert);
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('alerts')
+            .where('driverId', isEqualTo: driverId)
+            .orderBy('timestamp', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return Center(child: Text('Error: ${snapshot.error}'));
+          }
+
+          // If firestore has items, display them
+          if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+            final alertDocs = snapshot.data!.docs;
+            return ListView.builder(
+              padding: const EdgeInsets.all(12.0),
+              itemCount: alertDocs.length,
+              itemBuilder: (context, index) {
+                final alert = AlertItem.fromFirestore(alertDocs[index]);
+                return _buildAlertCard(alert);
+              },
+            );
+          }
+
+          // Fallback to default Sri Lanka Customs alerts if empty or index not ready
+          final fallbackAlerts = FirebaseService.defaultCustomsAlerts;
+          if (fallbackAlerts.isNotEmpty) {
+            return ListView.builder(
+              padding: const EdgeInsets.all(12.0),
+              itemCount: fallbackAlerts.length,
+              itemBuilder: (context, index) {
+                final alert = AlertItem.fromMap(fallbackAlerts[index]);
+                return _buildAlertCard(alert);
+              },
+            );
+          }
+
+          return Center(
+            child: Text(
+              'no_alerts'.tr(),
+              style: const TextStyle(color: Colors.grey),
+            ),
+          );
         },
       ),
     );
@@ -173,7 +256,7 @@ class AlertsScreen extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
         child: ListTile(
           leading: CircleAvatar(
-            backgroundColor: priorityColor.withOpacity(0.12),
+            backgroundColor: priorityColor.withValues(alpha: 0.12),
             radius: 24,
             child: Icon(alert.icon, color: priorityColor, size: 24),
           ),
@@ -200,7 +283,6 @@ class AlertsScreen extends StatelessWidget {
             ),
           ),
           subtitle: Column(
-            
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
@@ -211,12 +293,13 @@ class AlertsScreen extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
-                  color: priorityColor.withOpacity(0.1),
+                  color: priorityColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: priorityColor.withOpacity(0.5), width: 0.8),
+                  border: Border.all(
+                      color: priorityColor.withValues(alpha: 0.5), width: 0.8),
                 ),
                 child: Text(
-                  alert.priority.label,
+                  alert.priority.localizedLabel,
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
@@ -226,7 +309,8 @@ class AlertsScreen extends StatelessWidget {
               ),
             ],
           ),
-          trailing: const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
+          trailing:
+              const Icon(Icons.chevron_right, size: 20, color: Colors.grey),
           onTap: () {},
         ),
       ),
